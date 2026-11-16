@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Property {
+  id          Int      @id @default(autoincrement())
+  reference   String   @unique
+  title       String
+  operation   String
+  type        String
+  zone        String
+  price       Int
+  bedrooms    Int      @default(0)
+  area        Int
+  status      String   @default("available")
+  description String?
+  photos      PropertyPhoto[]
+  visits      Visit[]
+  leases      Lease[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([operation, status])
+}
+
+// Las fotos de cada inmueble. El archivo vive en storage/photos y aquí solo se guarda su
+// ruta. La foto con la posición más baja es la portada.
+model PropertyPhoto {
+  id         Int      @id @default(autoincrement())
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId Int
+  path       String
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId, position])
+}
+
+model Contact {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?
+  phone     String?
+  notes     String?
+  demands   Demand[]
+  visits    Visit[]
+  leases    Lease[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Demand {
+  id          Int      @id @default(autoincrement())
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   Int
+  operation   String
+  type        String?
+  zone        String?
+  maxPrice    Int
+  minBedrooms Int      @default(0)
+  minArea     Int      @default(0)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Visit {
+  id          Int      @id @default(autoincrement())
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId  Int
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   Int
+  scheduledAt DateTime
+  outcome     String   @default("pending")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([scheduledAt])
+}
+
+// Los contratos de alquiler: qué inmueble, quién lo alquila, cuánto paga y hasta cuándo.
+// Las fechas sin hora van como texto AAAA-MM-DD, que se ordena bien y no cambia con la zona
+// horaria del servidor.
+model Lease {
+  id          Int       @id @default(autoincrement())
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyId  Int
+  tenant      Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId   Int
+  startsOn    String
+  endsOn      String
+  monthlyRent Int
+  deposit     Int
+  // El día del mes en que vence cada recibo. La ley dice el 7 si no se pacta otro.
+  paymentDay  Int       @default(7)
+  receipts    Receipt[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Un recibo por contrato y mes, con el mes como AAAA-MM. La clave única impide emitir dos
+// veces el mismo mes.
+model Receipt {
+  id         Int       @id @default(autoincrement())
+  lease      Lease     @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  leaseId    Int
+  period     String
+  amount     Int
+  dueOn      String
+  paidOn     String?
+  remindedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([leaseId, period])
+  @@index([dueOn])
+}
